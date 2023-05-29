@@ -24,6 +24,8 @@ contract MoiIncentiveContract {
 
     mapping(string => mapping(bytes1 => uint256)) private allocations; // allocations tracks allocation for each wallet across allocation classes
 
+    mapping(string => mapping(bytes1 => string[])) private allocationProofs; // allocationProofs maintains proof records for every single allocation made, per user, per category
+
     // NewUserInAllocationClass is triggered when a new user is allocated tokens and added to the class
     event NewUserInAllocationClass(
         string indexed user,
@@ -81,6 +83,7 @@ contract MoiIncentiveContract {
 
         allocationClassIndices.push(newIndex);
         indexToAllocationClass[newIndex] = newAllocationClass;
+
         emit AllocationClassCreatedOrUpdated(
             newIndex,
             string(abi.encodePacked("AllocationClass created: ", _className)),
@@ -170,7 +173,8 @@ contract MoiIncentiveContract {
     function allocate(
         bytes1 _index,
         string[] memory _users,
-        uint256[] memory _amounts
+        uint256[] memory _amounts,
+        string memory _allocationProofHash
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
@@ -184,6 +188,8 @@ contract MoiIncentiveContract {
 
             allocations[_users[i]][_index] = currentUserAllocations + _amounts[i];
             indexToAllocationClass[_index].allocated += _amounts[i];
+
+            allocationProofs[_users[i]][_index].push(_allocationProofHash);
 
             if (currentUserAllocations == 0) {
                 emit NewUserInAllocationClass(
@@ -214,6 +220,17 @@ contract MoiIncentiveContract {
     function getAllocationClass(bytes1 _index) public view returns (AllocationClass memory _assetClass) {
         _assetClass = indexToAllocationClass[_index];
         require(!isStringsEqual(_assetClass.name, ""), "Invalid Allocation class");
+    }
+
+    /**
+    * @dev getAllocationProofsOf returns all the proofs recorded for a given user
+    * @param _user is the address of the user whose proofs must be returned
+    * @param _index is the allocation class from which the proof of allocation must be returned
+    * @return _proofs is fetched from allocationProofs and returned
+    */
+    function getAllocationProofsOf(string memory _user, bytes1 _index) public view returns (string[] memory _proofs) {
+        _proofs = allocationProofs[_user][_index];
+        require(_proofs.length > 0, "Invalid User ID or Allocation Class Index");
     }
 
     /**
