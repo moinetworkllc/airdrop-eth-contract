@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity <=0.8.17;
+pragma solidity ^0.8.17;
 pragma experimental ABIEncoderV2;
 
 /// @title MoiIncentiveContract - MOI token allocation management for all testnets
@@ -8,13 +8,12 @@ pragma experimental ABIEncoderV2;
 contract MoiIncentiveContract {
     address private _owner; // _owner is the contract owner, also known as the "deployer"
     struct AllocationClass {
-        bytes1 Index; // Index is the primary identifier for the allocation class
-        string Name; // Name is used to identify different categories of allocation class
-        uint256 Capacity; // Capacity represents the maximum tokens allotted to the allocation class
-        // TODO: Perform gas analysis of using AllocationClass.Allocated vs tokensAllocated
-        uint256 Allocated; // Allocated keeps track of total number of tokens already allocated in the class
-        bytes Metadata; // Metadata consists of extra information passed while creating or updating the allocation class
-        bool IsActive; // IsActive is used as a status check for the allocation class before operating on it
+        bytes1 index; // Index is the primary identifier for the allocation class
+        string name; // Name is used to identify different categories of allocation class
+        uint256 capacity; // Capacity represents the maximum tokens allotted to the allocation class
+        uint256 allocated; // Allocated keeps track of total number of tokens already allocated in the class
+        bytes metadata; // Metadata consists of extra information passed while creating or updating the allocation class
+        bool isActive; // IsActive is used as a status check for the allocation class before operating on it
     }
 
     bytes1[] private allocationClassIndices; // allocationClassIndices records the indices of all allocation classes
@@ -24,9 +23,6 @@ contract MoiIncentiveContract {
     mapping(bytes1 => AllocationClass) private indexToAllocationClass; // indexToAllocationClass mapping maps indexes to respective allocation classes
 
     mapping(string => mapping(bytes1 => uint256)) private allocations; // allocations tracks allocation for each wallet across allocation classes
-
-    // TODO: Perform gas analysis of using AllocationClass.Allocated vs tokensAllocated
-    //    mapping(bytes1 => uint256) private tokensAllocated; // Mapping of AllocationClass to token allocated
 
     // NewUserInAllocationClass is triggered when a new user is allocated tokens and added to the class
     event NewUserInAllocationClass(
@@ -55,8 +51,8 @@ contract MoiIncentiveContract {
 
     constructor() {
         _owner = msg.sender;
-        allocationsRateLimit = 100;
-        createAllocationClass("Indus", 150000000, "INDUS Airdrop on BABYLON, May 2023");
+        allocationsRateLimit = 1;
+        createAllocationClass("Indus", 1, "INDUS Airdrop on BABYLON, May 2023");
     }
 
     /* Setters */
@@ -95,7 +91,7 @@ contract MoiIncentiveContract {
     /**
      * @dev Updates token capacity of a given AllocationClass
      * @param _index refers to the index of the AllocationClass whose capacity must be updated
-     * @param _newCapacity is the new value that replaces the current AllocationClass.Capacity
+     * @param _newCapacity is the new value that replaces the current AllocationClass.capacity
      */
     function updateCapacity(
         bytes1 _index,
@@ -103,7 +99,9 @@ contract MoiIncentiveContract {
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        theAllocationClass.Capacity = _newCapacity;
+        require(_newCapacity > theAllocationClass.capacity, "Failed to update capacity. Make sure the new capacity is always larger than the old one.");
+
+        theAllocationClass.capacity = _newCapacity;
         indexToAllocationClass[_index] = theAllocationClass;
 
         emit AllocationClassCreatedOrUpdated(
@@ -124,7 +122,7 @@ contract MoiIncentiveContract {
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        theAllocationClass.IsActive = _newStatus;
+        theAllocationClass.isActive = _newStatus;
         indexToAllocationClass[_index] = theAllocationClass;
 
         emit AllocationClassCreatedOrUpdated(
@@ -145,7 +143,7 @@ contract MoiIncentiveContract {
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        theAllocationClass.Metadata = _newMetadata;
+        theAllocationClass.metadata = _newMetadata;
         indexToAllocationClass[_index] = theAllocationClass;
 
         emit AllocationClassCreatedOrUpdated(
@@ -176,19 +174,16 @@ contract MoiIncentiveContract {
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        require(theAllocationClass.IsActive, "Allocations not allowed. Owner set this allocation class to inactive");
+        require(theAllocationClass.isActive, "Allocations not allowed. Owner set this allocation class to inactive");
         require(_users.length == _amounts.length, "Length does not match between User list and token amounts list");
         require(_users.length <= allocationsRateLimit, "Length of the user lists exceeds the rate limit.");
 
-        //TODO Check for currently allocated tokens aganist capacity set for AllocationClass
-        //        require( _targetedAllocClass.Capacity >= tokensAllocated[allocType] , "Allocation not allowed. Capacity has been reached.");
-        require(_targetedAllocClass.Capacity >= _targetedAllocClass.Allocated, "Allocation not allowed. Capacity has been reached.");
-
         for (uint i = 0; i < _users.length; i++) {
+            require(theAllocationClass.capacity >= indexToAllocationClass[_index].allocated+_amounts[i], "Allocation not allowed. Capacity has been reached.");
             uint256 currentUserAllocations = allocations[_users[i]][_index];
 
             allocations[_users[i]][_index] = currentUserAllocations + _amounts[i];
-            theAllocationClass.Allocated += _amounts[i];
+            indexToAllocationClass[_index].allocated += _amounts[i];
 
             if (currentUserAllocations == 0) {
                 emit NewUserInAllocationClass(
@@ -218,7 +213,7 @@ contract MoiIncentiveContract {
     */
     function getAllocationClass(bytes1 _index) public view returns (AllocationClass memory _assetClass) {
         _assetClass = indexToAllocationClass[_index];
-        require(isStringsEqual(_assetClass.Name, ""), "Invalid Allocation class");
+        require(!isStringsEqual(_assetClass.name, ""), "Invalid Allocation class");
     }
 
     /**
@@ -248,7 +243,7 @@ contract MoiIncentiveContract {
 
         for (uint8 i = 0; i < uint8(allocationClassIndices.length); i++) {
             //            allocatedTokens[i] = tokensAllocated[allocationClassIndices[i]];
-            allocatedTokens[i] = indexToAllocationClass[allocationClassIndices[i]].Allocated;
+            allocatedTokens[i] = indexToAllocationClass[allocationClassIndices[i]].allocated;
         }
         return (allocationClassIndices, allocatedTokens);
     }
