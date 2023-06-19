@@ -7,6 +7,7 @@ pragma experimental ABIEncoderV2;
 /// @notice Operated by MOI Network LLC to manage and track allocations of all testnet users
 contract MoiIncentiveContract {
     address private _owner; // _owner is the contract owner, also known as the "deployer"
+
     struct AllocationClass {
         bytes1 index; // Index is the primary identifier for the allocation class
         string name; // Name is used to identify different categories of allocation class
@@ -37,6 +38,14 @@ contract MoiIncentiveContract {
     event AllocationClassCreatedOrUpdated(
         bytes1 allocationClassIndex,
         string eventMessage,
+        uint256 time
+    );
+
+    // AllocationSuccessful is emitted when a user is given a token allocation under an index
+    event AllocationSuccessful(
+        string indexed user,
+        uint256 amountAllocated,
+        bytes1 index,
         uint256 time
     );
 
@@ -198,6 +207,8 @@ contract MoiIncentiveContract {
                     block.timestamp
                 );
             }
+
+            emit AllocationSuccessful(_users[i], _amounts[i], _index, block.timestamp);
         }
     }
 
