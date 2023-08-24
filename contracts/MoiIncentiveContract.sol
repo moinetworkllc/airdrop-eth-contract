@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.17;
-pragma experimental ABIEncoderV2;
+pragma solidity 0.8.20;
 
 /// @title MoiIncentiveContract - MOI token allocation management for all testnets
 /// @author MOI Network LLC
@@ -49,14 +48,23 @@ contract MoiIncentiveContract {
         uint256 time
     );
 
+    error errorUnauthorized(string message);
+    error errorInvalidNewCapacity(string message);
+    error errorAllocationClassInactive(string message);
+    error errorMismatchInUserAndTokenAmountLength(string message);
+    error errorMismatchInTokenAmountAndProofLength(string message);
+    error errorUserListLengthOverRateLimit(string message);
+    error errorAllocationClassCapacityReached(string message);
+    error errorInvalidAllocationClass(string message);
+    error errorInvalidUserIdOrAllocationClassIndex(string message);
+
     /**
      * @dev Throws if called by any other account other than the smart contract owner.
      */
     modifier onlyOwner() {
-        require(
-            _owner == msg.sender,
-            "Only owner of this contract can do this action"
-        );
+        if (_owner != msg.sender) {
+            revert errorUnauthorized("You do not have access to make this call. Owners only!");
+        }
         _;
     }
 
@@ -111,7 +119,9 @@ contract MoiIncentiveContract {
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        require(_newCapacity > theAllocationClass.capacity, "Failed to update capacity. Make sure the new capacity is always larger than the old one.");
+        if (_newCapacity < theAllocationClass.capacity) {
+            revert errorInvalidNewCapacity("Make sure the new capacity is always larger than the old one.");
+        }
 
         theAllocationClass.capacity = _newCapacity;
         indexToAllocationClass[_index] = theAllocationClass;
@@ -183,22 +193,36 @@ contract MoiIncentiveContract {
         bytes1 _index,
         string[] memory _users,
         uint256[] memory _amounts,
-        string memory _allocationProofHash
+        string[] memory _allocationProofs
     ) public onlyOwner {
         AllocationClass memory theAllocationClass = getAllocationClass(_index);
 
-        require(theAllocationClass.isActive, "Allocations not allowed. Owner set this allocation class to inactive");
-        require(_users.length == _amounts.length, "Length does not match between User list and token amounts list");
-        require(_users.length <= allocationsRateLimit, "Length of the user lists exceeds the rate limit.");
+        if (!theAllocationClass.isActive) {
+            revert errorAllocationClassInactive("Owner set this allocation class to inactive");
+        }
+
+        if (_users.length != _amounts.length) {
+            revert errorMismatchInUserAndTokenAmountLength("User list and token amounts list length do not match");
+        }
+
+        if (_amounts.length != _allocationProofs.length) {
+            revert errorMismatchInTokenAmountAndProofLength("Token amounts list and proofs list length do not match");
+        }
+
+        if (_users.length > allocationsRateLimit) {
+            revert errorUserListLengthOverRateLimit("User list length exceeds the rate limit");
+        }
 
         for (uint i = 0; i < _users.length; i++) {
-            require(theAllocationClass.capacity >= indexToAllocationClass[_index].allocated+_amounts[i], "Allocation not allowed. Capacity has been reached.");
+            if (theAllocationClass.capacity < indexToAllocationClass[_index].allocated+_amounts[i]) {
+                revert errorAllocationClassCapacityReached("Capacity has been reached. No more allocations!");
+            }
             uint256 currentUserAllocations = allocations[_users[i]][_index];
 
             allocations[_users[i]][_index] = currentUserAllocations + _amounts[i];
             indexToAllocationClass[_index].allocated += _amounts[i];
 
-            allocationProofs[_users[i]][_index].push(_allocationProofHash);
+            allocationProofs[_users[i]][_index].push(_allocationProofs[i]);
 
             if (currentUserAllocations == 0) {
                 emit NewUserInAllocationClass(
@@ -230,7 +254,9 @@ contract MoiIncentiveContract {
     */
     function getAllocationClass(bytes1 _index) public view returns (AllocationClass memory _assetClass) {
         _assetClass = indexToAllocationClass[_index];
-        require(!isStringsEqual(_assetClass.name, ""), "Invalid Allocation class");
+        if (isStringsEqual(_assetClass.name, "")) {
+            revert errorInvalidAllocationClass("Invalid Allocation class");
+        }
     }
 
     /**
@@ -241,7 +267,9 @@ contract MoiIncentiveContract {
     */
     function getAllocationProofsOf(string memory _user, bytes1 _index) public view returns (string[] memory _proofs) {
         _proofs = allocationProofs[_user][_index];
-        require(_proofs.length > 0, "Invalid User ID or Allocation Class Index");
+        if (_proofs.length < 0) {
+            revert errorInvalidUserIdOrAllocationClassIndex("Invalid User ID or Allocation Class Index");
+        }
     }
 
     /**
